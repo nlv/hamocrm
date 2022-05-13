@@ -27,19 +27,16 @@ import Data.Text (unpack)
 
 import Data.AmoCRM
 
-user = "artandem7"
-
-token :: B.ByteString
-token = "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsImp0aSI6ImI3YTU2MmUxNWRiMmJjYjZhYjNlNWQ3ZDA5ZjgxNTQ2ZGNmZGQ0ZDMzMjI1MjNhMTYyMWM1NmI3YjAyN2M2MTNkMWJmMzgwNWNhYjcxZDBmIn0.eyJhdWQiOiI1N2ZlZjgyNy1hNDNlLTQ2NGQtOGU0My1mYzQyOGJjMzBlMmQiLCJqdGkiOiJiN2E1NjJlMTVkYjJiY2I2YWIzZTVkN2QwOWY4MTU0NmRjZmRkNGQzMzIyNTIzYTE2MjFjNTZiN2IwMjdjNjEzZDFiZjM4MDVjYWI3MWQwZiIsImlhdCI6MTY1MjQxODc3MSwibmJmIjoxNjUyNDE4NzcxLCJleHAiOjE2NTI1MDUxNzEsInN1YiI6Ijc4Nzk1OTEiLCJhY2NvdW50X2lkIjoyOTM3ODExOSwic2NvcGVzIjpbImNybSJdfQ.QzwZqA9QP94yfcGSKNgK1ots8vgGK0sT8owqPRXdDks1mOb-NcIq8je1Jo_US6S8FifVlPlym26hUF7gMp0DkRgWLxkA8D2eP2314Rcwq5eqgTifzEyDL1jym6EkXjklpbMf3NYqptFVw5OhvlHCBofzkEZIpA8S-ouokM38Z0lxZx3WfpSASyuMXjzzj4cZM7R7ZGkFcwtb_AbqynTve6JEO6AZbzRF0DmU91bJmNLhMvI26yAgVwmxwEb5VG3r96mlIOABBhRbBnQI0dgY7C1Sm36tb6k-0D70EcLVNOgvhnNlAXWyJtUiunIvr91PXUqBL4uWDdHLc5bFD3i_dg"
-
-request' = applyBearerAuth token $ parseRequest_ $ "https://" ++ user ++ ".amocrm.ru/api/v4/leads" 
+userFile = "user.txt"
+tokenFile = "token.txt"
 
 someFunc :: IO ()
 someFunc = do
+    token <- B.readFile tokenFile
+    user <- readFile userFile
+
     manager <- newManager tlsManagerSettings
     request <- applyBearerAuth token <$> parseRequest ("https://" ++ user ++ ".amocrm.ru/api/v4/leads")
-
-    -- request2 <- applyBearerAuth token <$> parseRequest ("https://" ++ user ++ ".amocrm.ru/api/v4/users")
 
     withResponse request manager $ \response -> do
         putStrLn $ "The status code was: " ++
