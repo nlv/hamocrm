@@ -38,6 +38,8 @@ library:
   - text
   - lens
   - vector
+  - servant
+  - servant-server
 
 executables:
   hamocrm-exe:

@@ -25,8 +25,10 @@ source-repository head
 
 library
   exposed-modules:
-      Data.AmoCRM
+      Api
+      Data.Amocrm
       Lib
+      Network.Amocrm
   other-modules:
       Paths_hamocrm
   hs-source-dirs:
@@ -42,6 +44,8 @@ library
     , http-conduit
     , http-types
     , lens
+    , servant
+    , servant-server
     , text
     , time
     , vector

@@ -2,17 +2,18 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE FlexibleInstances #-}
+-- {-# LANGUAGE AllowAmbiguousTypes #-}
 
-module Data.AmoCRM ( 
+module Data.Amocrm ( 
     
-  ListFromAmoCRM
-, parseList
+  ListFromAmocrm(..)
 , els
 
-, Lead(..)
-, parseLead
+, Lead
 , lid
 , lname
+
+, AmocrmModule(..)
 
 ) where
 
@@ -26,6 +27,9 @@ import Data.Vector (toList)
 import Control.Lens
 
 import Control.Monad
+
+class AmocrmModule a where
+  parser     :: Object -> Parser a
 
 
 data Lead = Lead {
@@ -43,24 +47,17 @@ data Lead = Lead {
 -- , _lstatusId     :: Text
 } deriving (Generic, Show)
 
-data ListFromAmoCRM a = ListFromAmoCRM {
+data ListFromAmocrm a = ListFromAmocrm {
   _els :: [a]
 } deriving (Generic, Show)
 
 makeLenses ''Lead
-makeLenses ''ListFromAmoCRM
+makeLenses ''ListFromAmocrm
 
-parseList :: String -> (Value -> Parser a) -> Value -> Parser (ListFromAmoCRM a)
-parseList ename parseElement = 
-  withObject "List from amoCRM" $ \obj -> do
-    embedded <- (obj .: "_embedded")
-    els <- embedded .: (fromString ename)
-    ListFromAmoCRM <$> toList <$> withArray "list of elements" (mapM parseElement) els
+instance AmocrmModule Lead where
+  parser = \obj -> Lead <$> obj .: "id" <*> obj .: "name"
 
-parseLead :: Value -> Parser Lead
-parseLead = 
-  withObject "lead" $ \obj -> do
-    Lead <$> obj .: "id" <*> obj .: "name"
+
 
   
 

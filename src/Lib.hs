@@ -25,7 +25,8 @@ import Control.Lens
 
 import Data.Text (unpack)
 
-import Data.AmoCRM
+import Data.Amocrm
+import Network.Amocrm
 
 userFile = "user.txt"
 tokenFile = "token.txt"
@@ -35,17 +36,9 @@ someFunc = do
     token <- B.readFile tokenFile
     user <- readFile userFile
 
-    manager <- newManager tlsManagerSettings
-    request <- applyBearerAuth token <$> parseRequest ("https://" ++ user ++ ".amocrm.ru/api/v4/leads")
+    a <- getList "leads" user token
 
-    withResponse request manager $ \response -> do
-        putStrLn $ "The status code was: " ++
-                   show (statusCode $ responseStatus response)
-
-        v <- bodyReaderSource (responseBody response) $$ sinkParser json
-
-        let a = (parseEither (parseList "leads" parseLead) v) :: Either String (ListFromAmoCRM Lead)
-        case a of
-            Right leads -> mapM_ putStrLn $ map (\e -> show (e ^. lid) ++ " ;;; " ++ unpack (e ^. lname)) $ leads ^. els
-            Left err -> putStrLn $ show err
+    case a of
+        Right leads -> mapM_ putStrLn $ map (\e -> show (e ^. lid) ++ " ;;; " ++ unpack (e ^. lname)) $ leads ^. els
+        Left err -> putStrLn $ show err
 
