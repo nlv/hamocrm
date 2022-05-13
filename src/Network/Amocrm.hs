@@ -33,7 +33,7 @@ getList :: AmocrmModule a => String -> String -> ByteString -> IO (Either String
 getList ename user token = do
 
     manager <- newManager tlsManagerSettings
-    request <- applyBearerAuth token <$> parseRequest ("https://" ++ user ++ ".amocrm.ru/api/v4/leads")
+    request <- applyBearerAuth token <$> parseRequest ("https://" ++ user ++ ".amocrm.ru/api/v4/" ++ ename)
 
     withResponse request manager $ \response -> do
 

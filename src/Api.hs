@@ -3,12 +3,18 @@
 
 module Api (
   Api
+  ,server
   )  where
 
-import Data.Text
+import Control.Monad.IO.Class
+
 import Servant
 
+import Data.ByteString
+import Control.Lens
+
 import Data.Amocrm
+import Network.Amocrm
 
 type Api = LeadsApi -- :<|> RowApi :<|> ImageApi
 
@@ -17,22 +23,15 @@ type LeadsApi =
           Get '[JSON] [Lead]
      )
 
--- server :: Server Api
--- server = getLeads
+server :: String -> ByteString -> Server Api
+server user token = getLeads user token
 
 
--- getLeads :: Handler [Lead]
--- getLeads = do
---   p' <- liftIO $ do
---     conn <- liftIO $ Pg.connectPostgreSQL $ dbConnectString opts
---     runBeamPostgresDebug putStrLn conn (B.getPostById id)
---   -- pure p'
---   case p' of
---     Just p'' -> do
---       p''' <- liftIO $ B.postToA (s3ConnInfo opts) p''
---       case p''' of
---         Left _ -> throwError err404
---         Right p -> pure p
---     _      -> throwError err404
+getLeads :: String -> ByteString -> Handler [Lead]
+getLeads user token = do
+     leads' <- liftIO $ getList "leads" user token
+     case leads' of
+          Right leads -> pure $ leads ^. els
+          Left _ -> throwError err404
 
 

@@ -28,9 +28,14 @@ import Control.Lens
 
 import Control.Monad
 
+data ListFromAmocrm a = ListFromAmocrm {
+  _els :: [a]
+} deriving (Generic, Show)
+
+makeLenses ''ListFromAmocrm
+
 class AmocrmModule a where
   parser     :: Object -> Parser a
-
 
 data Lead = Lead {
   _lid           :: Integer
@@ -47,15 +52,33 @@ data Lead = Lead {
 -- , _lstatusId     :: Text
 } deriving (Generic, Show)
 
-data ListFromAmocrm a = ListFromAmocrm {
-  _els :: [a]
-} deriving (Generic, Show)
+instance ToJSON Lead
 
 makeLenses ''Lead
-makeLenses ''ListFromAmocrm
 
 instance AmocrmModule Lead where
   parser = \obj -> Lead <$> obj .: "id" <*> obj .: "name"
+
+
+data User = User {
+  _uid           :: Integer
+, _ulname        :: Text
+-- , _lresponsible  :: Text
+-- , _laddress      :: Text
+-- , _ldateVisit    :: UTCTime
+-- , _ltype         :: Text
+-- , _lsellCost     :: Float -- Цена клиенту
+-- , _lpartsCost    :: Float -- Стоимость материалов
+-- , _lworksCost    :: Float -- Стоимость работ
+-- , _lofficeIncome :: Float -- Перевод в офис
+-- , _lclosedDate   :: UTCTime -- Дата закрытия
+-- , _lstatusId     :: Text
+} deriving (Generic, Show)
+
+makeLenses ''User
+
+instance AmocrmModule User where
+  parser = \obj -> User <$> obj .: "id" <*> obj .: "name"  
 
 
 

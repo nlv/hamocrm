@@ -51,6 +51,17 @@ executables:
     - -with-rtsopts=-N
     dependencies:
     - hamocrm
+    - wai
+    - wai-extra
+    - wai-cors
+    - warp
+    - text
+    - http-types
+    - servant
+    - servant-server
+    - servant-options
+    - bytestring
+    - optparse-applicative
 
 tests:
   hamocrm-test:
