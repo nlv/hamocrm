@@ -24,6 +24,20 @@ dependencies:
 
 library:
   source-dirs: src
+  dependencies:
+  - bytestring
+  - vector
+  - conduit
+  - conduit-extra
+  - http-types
+  - http-client
+  - http-client-tls
+  - http-conduit
+  - aeson
+  - time
+  - text
+  - lens
+  - vector
 
 executables:
   hamocrm-exe:

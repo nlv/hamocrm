@@ -25,13 +25,26 @@ source-repository head
 
 library
   exposed-modules:
+      Data.AmoCRM
       Lib
   other-modules:
       Paths_hamocrm
   hs-source-dirs:
       src
   build-depends:
-      base >=4.7 && <5
+      aeson
+    , base >=4.7 && <5
+    , bytestring
+    , conduit
+    , conduit-extra
+    , http-client
+    , http-client-tls
+    , http-conduit
+    , http-types
+    , lens
+    , text
+    , time
+    , vector
   default-language: Haskell2010
 
 executable hamocrm-exe
