@@ -44,8 +44,8 @@ someFunc = do
 
         v <- bodyReaderSource (responseBody response) $$ sinkParser json
 
-        let a = (parseEither (parseListFromAmoCRM "leads" parseLeadFromAmoCRM) v) :: Either String (ListFromAmoCRM Lead)
+        let a = (parseEither (parseList "leads" parseLead) v) :: Either String (ListFromAmoCRM Lead)
         case a of
-            Right leads -> mapM_ putStrLn $ map (\e -> show (e ^. lid) ++ " ;;; " ++ unpack (e ^. lname)) $ _els leads
+            Right leads -> mapM_ putStrLn $ map (\e -> show (e ^. lid) ++ " ;;; " ++ unpack (e ^. lname)) $ leads ^. els
             Left err -> putStrLn $ show err
 

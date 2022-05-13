@@ -4,12 +4,16 @@
 {-# LANGUAGE FlexibleInstances #-}
 
 module Data.AmoCRM ( 
-    Lead(..)
-    ,ListFromAmoCRM(..)
-    ,parseListFromAmoCRM
-    ,parseLeadFromAmoCRM
-    ,lid
-    ,lname
+    
+  ListFromAmoCRM
+, parseList
+, els
+
+, Lead(..)
+, parseLead
+, lid
+, lname
+
 ) where
 
 import GHC.Generics
@@ -46,15 +50,15 @@ data ListFromAmoCRM a = ListFromAmoCRM {
 makeLenses ''Lead
 makeLenses ''ListFromAmoCRM
 
-parseListFromAmoCRM :: String -> (Value -> Parser a) -> Value -> Parser (ListFromAmoCRM a)
-parseListFromAmoCRM ename parseElement = 
+parseList :: String -> (Value -> Parser a) -> Value -> Parser (ListFromAmoCRM a)
+parseList ename parseElement = 
   withObject "List from amoCRM" $ \obj -> do
     embedded <- (obj .: "_embedded")
     els <- embedded .: (fromString ename)
     ListFromAmoCRM <$> toList <$> withArray "list of elements" (mapM parseElement) els
 
-parseLeadFromAmoCRM :: Value -> Parser Lead
-parseLeadFromAmoCRM = 
+parseLead :: Value -> Parser Lead
+parseLead = 
   withObject "lead" $ \obj -> do
     Lead <$> obj .: "id" <*> obj .: "name"
 
