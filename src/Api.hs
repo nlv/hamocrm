@@ -16,22 +16,27 @@ import Control.Lens
 import Data.Amocrm
 import Network.Amocrm
 
-type Api = LeadsApi -- :<|> RowApi :<|> ImageApi
+type Api = LeadsApi :<|> UsersApi
 
 type LeadsApi =
      "leads" :> (
           Get '[JSON] [Lead]
-     )
+     ) 
+
+type UsersApi =      
+     "users" :> (
+          Get '[JSON] [User]
+     )      
 
 server :: String -> ByteString -> Server Api
-server user token = getLeads user token
+server user token = getAny "leads" user token :<|> getAny "users" user token
 
 
-getLeads :: String -> ByteString -> Handler [Lead]
-getLeads user token = do
-     leads' <- liftIO $ getList "leads" user token
+getAny :: (AmocrmModule a) => String -> String -> ByteString -> Handler [a]
+getAny mod user token = do
+     leads' <- liftIO $ getList mod user token
      case leads' of
           Right leads -> pure $ leads ^. els
-          Left _ -> throwError err404
+          Left _ -> throwError err404          
 
 

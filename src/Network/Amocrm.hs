@@ -18,9 +18,11 @@ import           Network.HTTP.Types.Status   (statusCode)
 
 import qualified Data.ByteString.Lazy as LB
 import qualified Data.ByteString as B
+import qualified Data.ByteString.Char8 as BC
 
 import Control.Applicative
 import Control.Monad
+import Control.Monad.IO.Class
 import Control.Lens
 
 import Data.Text (Text, unpack)
@@ -36,9 +38,7 @@ getList ename user token = do
     request <- applyBearerAuth token <$> parseRequest ("https://" ++ user ++ ".amocrm.ru/api/v4/" ++ ename)
 
     withResponse request manager $ \response -> do
-
       v <- bodyReaderSource (responseBody response) $$ sinkParser json
-
       pure $ parseEither (parseList ename) v
 
 

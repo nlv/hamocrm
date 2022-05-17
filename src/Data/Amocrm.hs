@@ -13,6 +13,10 @@ module Data.Amocrm (
 , lid
 , lname
 
+, User
+, uid
+, uname
+
 , AmocrmModule(..)
 
 ) where
@@ -62,7 +66,7 @@ instance AmocrmModule Lead where
 
 data User = User {
   _uid           :: Integer
-, _ulname        :: Text
+, _uname         :: Text
 -- , _lresponsible  :: Text
 -- , _laddress      :: Text
 -- , _ldateVisit    :: UTCTime
@@ -76,6 +80,8 @@ data User = User {
 } deriving (Generic, Show)
 
 makeLenses ''User
+
+instance ToJSON User
 
 instance AmocrmModule User where
   parser = \obj -> User <$> obj .: "id" <*> obj .: "name"  

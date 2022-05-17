@@ -27,7 +27,6 @@ library
   exposed-modules:
       Api
       Data.Amocrm
-      Lib
       Network.Amocrm
   other-modules:
       Paths_hamocrm

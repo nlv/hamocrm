@@ -39,7 +39,9 @@ optParser = Options
 
 main :: IO ()
 main = do
-    token <- B.readFile tokenFile
+    h <- openFile tokenFile ReadMode 
+    token <- BS.hGetLine h
+    hClose h
     opts <- execParser opts'
     runIt opts token
     where opts' = info (optParser <**> helper)
