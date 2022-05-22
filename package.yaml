@@ -62,6 +62,9 @@ executables:
     - servant-options
     - bytestring
     - optparse-applicative
+    - aeson
+    - time
+    - transformers
 
 tests:
   hamocrm-test:

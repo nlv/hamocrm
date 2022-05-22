@@ -58,7 +58,8 @@ executable hamocrm-exe
       app
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      base >=4.7 && <5
+      aeson
+    , base >=4.7 && <5
     , bytestring
     , hamocrm
     , http-types
@@ -67,6 +68,8 @@ executable hamocrm-exe
     , servant-options
     , servant-server
     , text
+    , time
+    , transformers
     , wai
     , wai-cors
     , wai-extra
