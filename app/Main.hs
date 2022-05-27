@@ -82,25 +82,37 @@ getAccessToken opts = do
     case tokens' of
       Left err -> pure $ Left err
       Right tokens -> do
-        endTime <- pure $ ( fromInteger . endTokenTime ) tokens
-        now <- getPOSIXTime
-        liftIO $ Prelude.putStrLn $ show now
-        liftIO $ Prelude.putStrLn $ show endTime
-        let expired = now > endTime
-        if expired 
-          then do
-              liftIO $ System.IO.putStrLn $ "Надо менять"  
-              newToken' <- refreshToken opts tokens
-              liftIO $ Prelude.putStrLn $ show newToken'
-              case newToken' of
-                Left err -> pure $ Left err
-                Right newToken -> do
-                  h <- liftIO $ openFile tokenFile WriteMode 
-                  liftIO $ BS.hPutStrLn h $ BL.toStrict $ encode newToken
-                  liftIO $ hClose h
-                  pure $ Right $ BS.pack $ access_token newToken
-          else
-            pure $ Right $ BS.pack $ access_token tokens
+        liftIO $ System.IO.putStrLn $ "Надо менять"  
+        newToken' <- refreshToken opts tokens
+        liftIO $ Prelude.putStrLn $ show newToken'
+        case newToken' of
+          Left err -> pure $ Left err
+          Right newToken -> do
+            h <- liftIO $ openFile tokenFile WriteMode 
+            liftIO $ BS.hPutStrLn h $ BL.toStrict $ encode newToken
+            liftIO $ hClose h
+            pure $ Right $ BS.pack $ access_token newToken        
+
+
+        -- now <- getPOSIXTime
+        -- endTime <- pure $ ( fromInteger . expires_in ) tokens + now
+        -- liftIO $ Prelude.putStrLn $ show now
+        -- liftIO $ Prelude.putStrLn $ show endTime
+        -- let expired = now > endTime
+        -- if expired 
+        --   then do
+        --       liftIO $ System.IO.putStrLn $ "Надо менять"  
+        --       newToken' <- refreshToken opts tokens
+        --       liftIO $ Prelude.putStrLn $ show newToken'
+        --       case newToken' of
+        --         Left err -> pure $ Left err
+        --         Right newToken -> do
+        --           h <- liftIO $ openFile tokenFile WriteMode 
+        --           liftIO $ BS.hPutStrLn h $ BL.toStrict $ encode newToken
+        --           liftIO $ hClose h
+        --           pure $ Right $ BS.pack $ access_token newToken
+        --   else
+        --     pure $ Right $ BS.pack $ access_token tokens
 
    
 runIt :: ProgOptions -> ByteString -> IO ()

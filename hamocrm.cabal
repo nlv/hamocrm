@@ -34,8 +34,10 @@ library
       src
   build-depends:
       aeson
+    , aeson-combinators
     , base >=4.7 && <5
     , bytestring
+    , case-insensitive
     , conduit
     , conduit-extra
     , http-client
@@ -43,6 +45,7 @@ library
     , http-conduit
     , http-types
     , lens
+    , scientific
     , servant
     , servant-server
     , text

@@ -37,6 +37,8 @@ getAny mod user token = do
      leads' <- liftIO $ getList mod user token
      case leads' of
           Right leads -> pure $ leads ^. els
-          Left _ -> throwError err404          
+          Left err -> do
+               liftIO $ Prelude.putStrLn $ show err
+               throwError err404          
 
 
