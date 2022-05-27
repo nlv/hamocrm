@@ -82,16 +82,18 @@ getAccessToken opts = do
     case tokens' of
       Left err -> pure $ Left err
       Right tokens -> do
-        liftIO $ System.IO.putStrLn $ "Надо менять"  
-        newToken' <- refreshToken opts tokens
-        liftIO $ Prelude.putStrLn $ show newToken'
-        case newToken' of
-          Left err -> pure $ Left err
-          Right newToken -> do
-            h <- liftIO $ openFile tokenFile WriteMode 
-            liftIO $ BS.hPutStrLn h $ BL.toStrict $ encode newToken
-            liftIO $ hClose h
-            pure $ Right $ BS.pack $ access_token newToken        
+        pure $ Right $ BS.pack $ access_token tokens
+        
+        -- liftIO $ System.IO.putStrLn $ "Надо менять"  
+        -- newToken' <- refreshToken opts tokens
+        -- liftIO $ Prelude.putStrLn $ show newToken'
+        -- case newToken' of
+        --   Left err -> pure $ Left err
+        --   Right newToken -> do
+        --     h <- liftIO $ openFile tokenFile WriteMode 
+        --     liftIO $ BS.hPutStrLn h $ BL.toStrict $ encode newToken
+        --     liftIO $ hClose h
+        --     pure $ Right $ BS.pack $ access_token newToken        
 
 
         -- now <- getPOSIXTime
