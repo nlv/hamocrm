@@ -13,6 +13,7 @@ import Servant
 import Data.ByteString
 import Control.Lens
 import Control.Monad.Reader
+import Control.Monad.Except
 
 import Data.Amocrm
 import Network.Amocrm
@@ -34,10 +35,9 @@ data ServerReader = ServerReader {
      , srToken :: ByteString
 }
 
-serverT :: ServerT Api (ReaderT ServerReader IO)
+serverT :: ServerT Api (ReaderT ServerReader (ExceptT ServerError IO))
 serverT = getAny "leads" :<|> getAny "users"
 
--- server :: String -> ByteString -> ServerT Api (ReaderT ServerReader IO)
 server :: String -> ByteString -> Server Api
 server user token = hoistServer api (readerToHandler user token) serverT
 
@@ -45,8 +45,7 @@ api :: Proxy Api
 api = Proxy
 
 
--- getAny :: (AmocrmModule a) => String -> (ReaderT ServerReader (ExceptT ServerError IO)) [a]
-getAny :: (AmocrmModule a) => String -> (ReaderT ServerReader IO) [a]
+getAny :: (AmocrmModule a) => String -> (ReaderT ServerReader (ExceptT ServerError IO)) [a]
 getAny mod = do
      user <- asks srUser
      token <- asks srToken
@@ -55,14 +54,16 @@ getAny mod = do
           Right leads -> pure $ leads ^. els
           Left err -> do
                liftIO $ Prelude.putStrLn $ show err
-               error $ show err
-               -- lift $ throwError err404
+               -- error $ show err
+               throwError err404
                -- pure [] --err404          
 
 
-readerToHandler :: String -> ByteString -> ReaderT ServerReader IO a -> Handler a
+readerToHandler :: String -> ByteString -> ReaderT ServerReader (ExceptT ServerError IO) a -> Handler a
 readerToHandler user token r = do
-     a <- liftIO (runReaderT r ServerReader {srUser = user, srToken = token})
-     pure a
+     a <- liftIO (runExceptT $  runReaderT r ServerReader {srUser = user, srToken = token})
+     case a of
+          Right v -> pure v
+          Left err -> throwError err
 
 
