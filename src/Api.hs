@@ -12,7 +12,8 @@ import Servant
 
 import Data.ByteString
 import Control.Lens
-import Control.Monad.Reader
+-- import Control.Monad.Reader
+import Control.Monad.RWS hiding (getAny)
 import Control.Monad.Except
 
 import Data.Amocrm
@@ -32,10 +33,17 @@ type UsersApi =
 
 data ServerReader = ServerReader {
        srUser  :: String
-     , srToken :: ByteString
 }
 
-serverT :: ServerT Api (ReaderT ServerReader (ExceptT ServerError IO))
+data ServerState = ServerState {
+       ssToken :: ByteString
+}
+
+type ServerLog = String
+
+type ServerMonad = RWST ServerReader ServerLog ServerState (ExceptT ServerError IO)
+
+serverT :: ServerT Api ServerMonad
 serverT = getAny "leads" :<|> getAny "users"
 
 server :: String -> ByteString -> Server Api
@@ -45,25 +53,25 @@ api :: Proxy Api
 api = Proxy
 
 
-getAny :: (AmocrmModule a) => String -> (ReaderT ServerReader (ExceptT ServerError IO)) [a]
+getAny :: (AmocrmModule a) => String -> ServerMonad [a]
 getAny mod = do
      user <- asks srUser
-     token <- asks srToken
+     token <- ssToken <$> get
      leads' <- liftIO $ getList mod user token
      case leads' of
           Right leads -> pure $ leads ^. els
           Left err -> do
                liftIO $ Prelude.putStrLn $ show err
-               -- error $ show err
                throwError err404
-               -- pure [] --err404          
 
 
-readerToHandler :: String -> ByteString -> ReaderT ServerReader (ExceptT ServerError IO) a -> Handler a
+readerToHandler :: String -> ByteString -> ServerMonad a -> Handler a
 readerToHandler user token r = do
-     a <- liftIO (runExceptT $  runReaderT r ServerReader {srUser = user, srToken = token})
+     let initR = ServerReader {srUser = user} 
+         initS = ServerState { ssToken = token}
+     a <- liftIO (runExceptT $  runRWST r initR initS)
      case a of
-          Right v -> pure v
-          Left err -> throwError err
+       Right (a, s, w) -> pure a
+       Left err -> throwError err
 
 
