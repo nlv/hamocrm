@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE DeriveGeneric #-}
 
 
 module Main where
@@ -31,8 +32,6 @@ import Data.Aeson
 import Api
 import Network.Amocrm
 
-
-
 tokenFile = "token.txt"
 
 data ProgOptions = ProgOptions {
@@ -48,6 +47,14 @@ instance TokenRequest ProgOptions where
   tokClientId     = optClientId
   tokClientSecret = optClientSecret
   tokRedirectURI  = optRedirectUri
+
+data TokensStamp = TokensStamp {
+  tokens       :: OAuth2
+, endTokenTime :: POSIXTime
+} deriving (Show, Generic)
+
+instance FromJSON TokensStamp
+instance ToJSON TokensStamp
 
 
 api :: Proxy Api
@@ -77,44 +84,32 @@ main = do
 getAccessToken :: ProgOptions -> IO (Either String ByteString)
 getAccessToken opts = do
     h <- liftIO $ openFile tokenFile ReadMode 
-    tokens' <- eitherDecodeStrict <$> B.hGetLine h :: IO (Either String OAuth2)
+    tokens' <- eitherDecodeStrict <$> B.hGetLine h :: IO (Either String TokensStamp)
     liftIO $ hClose h
     case tokens' of
       Left err -> pure $ Left err
-      Right tokens -> do
-        pure $ Right $ BS.pack $ access_token tokens
-        
-        -- liftIO $ System.IO.putStrLn $ "Надо менять"  
-        -- newToken' <- refreshToken opts tokens
-        -- liftIO $ Prelude.putStrLn $ show newToken'
-        -- case newToken' of
-        --   Left err -> pure $ Left err
-        --   Right newToken -> do
-        --     h <- liftIO $ openFile tokenFile WriteMode 
-        --     liftIO $ BS.hPutStrLn h $ BL.toStrict $ encode newToken
-        --     liftIO $ hClose h
-        --     pure $ Right $ BS.pack $ access_token newToken        
-
-
-        -- now <- getPOSIXTime
-        -- endTime <- pure $ ( fromInteger . expires_in ) tokens + now
-        -- liftIO $ Prelude.putStrLn $ show now
-        -- liftIO $ Prelude.putStrLn $ show endTime
-        -- let expired = now > endTime
-        -- if expired 
-        --   then do
-        --       liftIO $ System.IO.putStrLn $ "Надо менять"  
-        --       newToken' <- refreshToken opts tokens
-        --       liftIO $ Prelude.putStrLn $ show newToken'
-        --       case newToken' of
-        --         Left err -> pure $ Left err
-        --         Right newToken -> do
-        --           h <- liftIO $ openFile tokenFile WriteMode 
-        --           liftIO $ BS.hPutStrLn h $ BL.toStrict $ encode newToken
-        --           liftIO $ hClose h
-        --           pure $ Right $ BS.pack $ access_token newToken
-        --   else
-        --     pure $ Right $ BS.pack $ access_token tokens
+      Right tt@TokensStamp{..} -> do
+        now <- getPOSIXTime
+        liftIO $ Prelude.putStrLn $ show now
+        liftIO $ Prelude.putStrLn $ show endTokenTime
+        let expired = now > endTokenTime
+        if expired 
+          then do
+              liftIO $ System.IO.putStrLn $ "Надо менять"  
+              pure $ Right $ BS.pack $ access_token tokens
+              newToken' <- refreshToken opts tokens
+              liftIO $ Prelude.putStrLn $ show newToken'
+              case newToken' of
+                Left err -> pure $ Left err
+                Right newToken -> do
+                  let newTokensStamp = TokensStamp { tokens = newToken, endTokenTime = (fromInteger . expires_in) tokens + now}
+                  h <- liftIO $ openFile tokenFile WriteMode 
+                  liftIO $ BS.hPutStrLn h $ BL.toStrict $ encode newTokensStamp
+                  liftIO $ hClose h
+                  pure $ Right $ BS.pack $ access_token newToken
+          else do
+            liftIO $ System.IO.putStrLn $ "НЕ надо менять"  
+            pure $ Right $ BS.pack $ access_token tokens
 
    
 runIt :: ProgOptions -> ByteString -> IO ()
