@@ -19,6 +19,8 @@ module Data.Amocrm (
 
 , AmocrmModule(..)
 
+, append'
+
 ) where
 
 import GHC.Generics
@@ -39,7 +41,10 @@ data ListFromAmocrm a = ListFromAmocrm {
   _els :: [a]
 } deriving (Generic, Show)
 
+
 makeLenses ''ListFromAmocrm
+
+append' l1 l2 = ListFromAmocrm (l1 ^. els ++ l2 ^. els)
 
 class AmocrmModule a where
   parser     :: Object -> Parser a

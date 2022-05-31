@@ -32,8 +32,6 @@ import Data.Aeson
 import Api
 import Network.Amocrm
 
-tokenFile = "token.txt"
-
 -- data ProgOptions = ProgOptions {
 --     optUser         :: String
 --   , optPort         :: Int

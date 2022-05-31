@@ -10,6 +10,7 @@ module Network.Amocrm
 
 import GHC.Generics
 import           Data.Aeson
+import qualified Data.List as L (length) 
 import           Data.Aeson.Key
 import           Data.Aeson.Types
 import           Data.Aeson.Parser           (json)
@@ -25,6 +26,11 @@ import qualified Data.ByteString.Lazy as LB
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as BC
 import           Data.CaseInsensitive
+import qualified Data.ByteString.Char8 as BS
+
+-- !! Убрать лишние импорты, объявления функций, констант, раширений. Проверить все предупреждения
+-- !! Оптимизация
+
 
 import Control.Applicative
 import Control.Monad
@@ -53,12 +59,38 @@ class TokenRequest a where
 instance FromJSON OAuth2
 instance ToJSON OAuth2
 
+-- !! Сделать stream
+
 getList :: AmocrmModule a => String -> String -> ByteString -> IO (Either String (ListFromAmocrm a))
-getList ename user token = do
+getList ename user token = go 1 0
+
+    where 
+      go n total = do
+        liftIO $ Prelude.putStrLn $ "Порция: " ++ show n
+        r' <- getListPage ename user token n
+        case r' of
+          err@(Left _) -> pure err
+          Right r'' -> do 
+            let here = L.length (r'' ^. els)
+            liftIO $ Prelude.putStrLn $ "ВСЕГО: " ++ show (total + here)
+            if here < 250
+              then 
+                pure (Right r'') 
+              else do
+                l2 <- go (n + 1) (total + here)
+                case l2 of
+                  err2@(Left _) -> pure err2
+                  Right l3 -> pure (Right $ append' r'' l3)
+
+
+getListPage :: AmocrmModule a => String -> String -> ByteString -> Int -> IO (Either String (ListFromAmocrm a))
+getListPage ename user token page = do
 
     let query = [
                   ("filter[pipeline_id]", Just "5023048")
                 , ("order[created_at]", Just "desc")
+                , ("limit", Just "250")
+                , ("page", Just $ BS.pack $ show page)
                 ]
 
     manager <- newManager tlsManagerSettings
