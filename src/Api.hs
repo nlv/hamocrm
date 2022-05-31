@@ -1,9 +1,13 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE DatatypeContexts #-}
 
 module Api (
   Api
   ,server
+  ,ProgOptions(..)
   )  where
 
 import Control.Monad.IO.Class
@@ -16,8 +20,36 @@ import Control.Lens
 import Control.Monad.RWS hiding (getAny)
 import Control.Monad.Except
 
+import System.IO
+import GHC.Generics
+import Data.Time
+import Data.Time.Clock.POSIX
+import Data.Aeson
+import Data.ByteString as B
+import qualified Data.ByteString.Char8 as BS
+import qualified Data.ByteString.Lazy as BL
+
 import Data.Amocrm
 import Network.Amocrm
+
+-- !!! Не должно быть тут! 
+
+tokenFile = "token.txt"
+
+data ProgOptions = ProgOptions {
+    optUser         :: String
+  , optPort         :: Int
+  , optClientId     :: String
+  , optClientSecret :: String
+  , optRedirectUri  :: String
+  }
+
+instance TokenRequest ProgOptions where
+  tokUser         = optUser
+  tokClientId     = optClientId
+  tokClientSecret = optClientSecret
+  tokRedirectURI  = optRedirectUri
+
 
 type Api = LeadsApi :<|> UsersApi
 
@@ -31,12 +63,21 @@ type UsersApi =
           Get '[JSON] [User]
      )      
 
+data TokensStamp = TokensStamp {
+  tsTokens       :: OAuth2
+, tsEndTokenTime :: POSIXTime
+} deriving (Show, Generic)
+
+instance FromJSON TokensStamp
+instance ToJSON TokensStamp
+
 data ServerReader = ServerReader {
-       srUser  :: String
+       srOptions  :: ProgOptions
+     , srTokenFile :: FilePath  
 }
 
 data ServerState = ServerState {
-       ssToken :: ByteString
+       ssTokensStamps :: Maybe TokensStamp
 }
 
 type ServerLog = String
@@ -46,8 +87,8 @@ type ServerMonad = RWST ServerReader ServerLog ServerState (ExceptT ServerError 
 serverT :: ServerT Api ServerMonad
 serverT = getAny "leads" :<|> getAny "users"
 
-server :: String -> ByteString -> Server Api
-server user token = hoistServer api (readerToHandler user token) serverT
+server :: ProgOptions -> Server Api
+server opts = hoistServer api (readerToHandler opts) serverT
 
 api :: Proxy Api
 api = Proxy
@@ -55,9 +96,52 @@ api = Proxy
 
 getAny :: (AmocrmModule a) => String -> ServerMonad [a]
 getAny mod = do
-     user <- asks srUser
-     token <- ssToken <$> get
-     leads' <- liftIO $ getList mod user token
+     opts <- asks srOptions
+     tokensStamp' <- ssTokensStamps <$> get
+     tokenFile <- asks srTokenFile
+     TokensStamp{..} <- 
+          case tokensStamp' of
+               Just o -> pure o
+               Nothing -> do
+                    h <- liftIO $ openFile tokenFile ReadMode 
+                    tokens' <- liftIO $ eitherDecodeStrict <$> B.hGetLine h :: ServerMonad (Either String TokensStamp)
+                    liftIO $ hClose h
+                    case tokens' of
+                         Left err -> do
+                              liftIO $ Prelude.putStrLn $ show err
+                              throwError err404
+                         Right tokens -> pure tokens
+
+     now <- liftIO getPOSIXTime
+     liftIO $ Prelude.putStrLn $ show now
+     liftIO $ Prelude.putStrLn $ show tsEndTokenTime
+     let expired = now > tsEndTokenTime
+
+     tsTokens' <- if expired 
+          then do
+            liftIO $ System.IO.putStrLn $ "Надо менять"  
+            newToken' <- liftIO $ refreshToken opts tsTokens
+            liftIO $ Prelude.putStrLn $ show newToken'
+            case newToken' of
+              Left err -> do
+                   liftIO $ Prelude.putStrLn $ show err
+                   throwError err404
+              Right newToken -> do
+                let newTokensStamp = TokensStamp { tsTokens = newToken, tsEndTokenTime = (fromInteger . expires_in) tsTokens + now}
+                h <- liftIO $ openFile tokenFile WriteMode 
+                let newTS = BL.toStrict $ encode newTokensStamp
+                liftIO $ BS.putStrLn newTS    
+                liftIO $ BS.hPutStrLn h newTS
+                liftIO $ hClose h
+                pure $ BS.pack $ access_token newToken
+          else do
+            liftIO $ System.IO.putStrLn $ "НЕ надо менять"  
+            pure $ BS.pack $ access_token tsTokens     
+            
+
+
+
+     leads' <- liftIO $ getList mod (optUser opts) tsTokens'
      case leads' of
           Right leads -> pure $ leads ^. els
           Left err -> do
@@ -65,13 +149,15 @@ getAny mod = do
                throwError err404
 
 
-readerToHandler :: String -> ByteString -> ServerMonad a -> Handler a
-readerToHandler user token r = do
-     let initR = ServerReader {srUser = user} 
-         initS = ServerState { ssToken = token}
+readerToHandler :: ProgOptions -> ServerMonad a -> Handler a
+readerToHandler opts r = do
+     let initR = ServerReader {srOptions = opts, srTokenFile = tokenFile} 
+         initS = ServerState { ssTokensStamps = Nothing}
      a <- liftIO (runExceptT $  runRWST r initR initS)
      case a of
        Right (a, s, w) -> pure a
-       Left err -> throwError err
+       Left err -> do 
+            liftIO $ Prelude.putStrLn $ show err
+            throwError err
 
 
