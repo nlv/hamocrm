@@ -133,6 +133,7 @@ getAny mod = do
                 liftIO $ BS.putStrLn newTS    
                 liftIO $ BS.hPutStrLn h newTS
                 liftIO $ hClose h
+                put $ ServerState {ssTokensStamps = Just newTokensStamp}
                 pure $ BS.pack $ access_token newToken
           else do
             liftIO $ System.IO.putStrLn $ "НЕ надо менять"  
