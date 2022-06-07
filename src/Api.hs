@@ -51,7 +51,7 @@ instance TokenRequest ProgOptions where
   tokRedirectURI  = optRedirectUri
 
 
-type Api = LeadsApi :<|> UsersApi
+type Api = LeadsApi :<|> UsersApi :<|> PipelinesApi
 
 type LeadsApi =
      "leads" :> (
@@ -61,6 +61,11 @@ type LeadsApi =
 type UsersApi =      
      "users" :> (
           Get '[JSON] [User]
+     ) 
+
+type PipelinesApi =
+     "pipelines" :> (
+          "statuses" :> Get '[JSON] [Status]
      )      
 
 data TokensStamp = TokensStamp {
@@ -85,7 +90,7 @@ type ServerLog = String
 type ServerMonad = RWST ServerReader ServerLog ServerState (ExceptT ServerError IO)
 
 serverT :: ServerT Api ServerMonad
-serverT = getAny "leads" :<|> getAny "users"
+serverT = getAny "leads" :<|> getAny "users" :<|> getStatuses pipeline_id
 
 server :: ProgOptions -> Server Api
 server opts = hoistServer api (readerToHandler opts) serverT
@@ -93,6 +98,60 @@ server opts = hoistServer api (readerToHandler opts) serverT
 api :: Proxy Api
 api = Proxy
 
+-- !!! Дублирование получения токена с getAmy 
+-- getAny :: (AmocrmModule a) => String -> ServerMonad [a]
+getStatuses :: Int -> ServerMonad [Status]
+getStatuses pipeline_id = do
+     opts <- asks srOptions
+     tokensStamp' <- ssTokensStamps <$> get
+     tokenFile <- asks srTokenFile
+     TokensStamp{..} <- 
+          case tokensStamp' of
+               Just o -> pure o
+               Nothing -> do
+                    h <- liftIO $ openFile tokenFile ReadMode 
+                    tokens' <- liftIO $ eitherDecodeStrict <$> B.hGetLine h :: ServerMonad (Either String TokensStamp)
+                    liftIO $ hClose h
+                    case tokens' of
+                         Left err -> do
+                              liftIO $ Prelude.putStrLn $ show err
+                              throwError err404
+                         Right tokens -> pure tokens
+
+     now <- liftIO getPOSIXTime
+     liftIO $ Prelude.putStrLn $ show now
+     liftIO $ Prelude.putStrLn $ show tsEndTokenTime
+     let expired = now > tsEndTokenTime
+
+     tsTokens' <- if expired 
+          then do
+            liftIO $ System.IO.putStrLn $ "Надо менять"  
+            newToken' <- liftIO $ refreshToken opts tsTokens
+            liftIO $ Prelude.putStrLn $ show newToken'
+            case newToken' of
+              Left err -> do
+                   liftIO $ Prelude.putStrLn $ show err
+                   throwError err404
+              Right newToken -> do
+                let newTokensStamp = TokensStamp { tsTokens = newToken, tsEndTokenTime = (fromInteger . expires_in) tsTokens + now}
+                h <- liftIO $ openFile tokenFile WriteMode 
+                let newTS = BL.toStrict $ encode newTokensStamp
+                liftIO $ BS.putStrLn newTS    
+                liftIO $ BS.hPutStrLn h newTS
+                liftIO $ hClose h
+                put $ ServerState {ssTokensStamps = Just newTokensStamp}
+                pure $ BS.pack $ access_token newToken
+          else do
+            liftIO $ System.IO.putStrLn $ "НЕ надо менять"  
+            pure $ BS.pack $ access_token tsTokens     
+
+-- getStatusesList :: Int -> String -> ByteString -> IO (Either String (ListFromAmocrm Status))
+     statuses' <- liftIO $ getStatusesList pipeline_id (optUser opts) tsTokens'
+     case statuses' of
+          Right statuses -> pure $ statuses ^. els
+          Left err -> do
+               liftIO $ Prelude.putStrLn $ show err
+               throwError err404
 
 getAny :: (AmocrmModule a) => String -> ServerMonad [a]
 getAny mod = do

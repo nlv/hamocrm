@@ -3,6 +3,7 @@
 
 module Network.Amocrm
     ( getList
+    , getStatusesList
     , TokenRequest(..)
     ,OAuth2(..)
     , refreshToken
@@ -87,7 +88,7 @@ getListPage :: AmocrmModule a => String -> String -> ByteString -> Int -> IO (Ei
 getListPage ename user token page = do
 
     let query = [
-                  ("filter[pipeline_id]", Just "5023048")
+                  ("filter[pipeline_id]", Just $ BS.pack $ show pipeline_id)
                 , ("order[created_at]", Just "desc")
                 , ("limit", Just "250")
                 , ("page", Just $ BS.pack $ show page)
@@ -116,6 +117,18 @@ parseList  ename =
     parseElement = 
       withObject "element" parser
 
+getStatusesList :: Int -> String -> ByteString -> IO (Either String (ListFromAmocrm Status))
+getStatusesList pipeline_id user token = do
+
+    manager <- newManager tlsManagerSettings
+    request <- (applyBearerAuth token) <$> parseRequest ("https://" ++ user ++ ".amocrm.ru/api/v4/leads/pipelines/" ++ (show pipeline_id) ++ "/statuses")
+
+    withResponse request manager $ \response -> do
+      v <- bodyReaderSource (responseBody response) $$ sinkParser json
+      -- liftIO $ Prelude.putStrLn $ "====="
+      -- liftIO $ Prelude.putStrLn $ show v
+      -- liftIO $ Prelude.putStrLn $ "====="
+      pure $ parseEither (parseList "statuses") v
 
 refreshToken :: TokenRequest a => a -> OAuth2 -> IO (Either String OAuth2)
 refreshToken tok oauth = do
@@ -153,3 +166,35 @@ refreshToken tok oauth = do
       -- LB.putStrLn $ encode v
       pure $ parseEither parseJSON v
 
+-- getStatuses :: String -> ByteString -> Int -> IO (Either String (ListFromAmocrm Status))
+-- getStatuses user token pipeline = do
+
+--     -- let query = [
+--     --               ("filter[pipeline_id]", Just $ BS.pack $ show pipeline_id)
+--     --             , ("order[created_at]", Just "desc")
+--     --             , ("limit", Just "250")
+--     --             , ("page", Just $ BS.pack $ show page)
+--     --             ]
+
+--     manager <- newManager tlsManagerSettings
+--     request <- applyBearerAuth token <$> parseRequest ("https://" ++ user ++ ".amocrm.ru/api/v4/leads/pipelines/" ++ show pipeline ++ "/statuses")
+
+--     withResponse request manager $ \response -> do
+--       v <- bodyReaderSource (responseBody response) $$ sinkParser json
+--       -- liftIO $ Prelude.putStrLn $ "====="
+--       -- liftIO $ Prelude.putStrLn $ show v
+--       -- liftIO $ Prelude.putStrLn $ "====="
+--       pure $ parseEither parseStatuses v
+
+
+-- parseStatuses:: Value -> Parser (ListFromAmocrm Status)
+-- parseStatuses = 
+--   withObject "response" $ \obj -> do
+--     embedded <- (obj .: "_embedded")
+--     els <- embedded .: (fromString ename)
+--     ListFromAmocrm <$> toList <$> withArray ename (mapM parseElement) els
+
+--   where 
+--     parseElement :: AmocrmModule a => Value -> Parser a
+--     parseElement = 
+--       withObject "element" parser      

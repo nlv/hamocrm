@@ -17,9 +17,15 @@ module Data.Amocrm (
 , uid
 , uname
 
+, Status
+, sid
+, sname
+
 , AmocrmModule(..)
 
 , append'
+
+, pipeline_id
 
 ) where
 
@@ -168,7 +174,20 @@ instance ToJSON User
 instance AmocrmModule User where
   parser = \obj -> User <$> obj .: "id" <*> obj .: "name"  
 
+pipeline_id :: Int
+pipeline_id = 5023048
 
+data Status = Status {
+    _sname :: Text
+  , _sid   :: Integer
+}  deriving (Generic, Show)
+
+makeLenses ''Status
+
+instance ToJSON Status
+
+instance AmocrmModule Status where
+  parser = \obj -> Status <$> obj .: "name" <*> obj .: "id"  
 
   
 
