@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE DeriveGeneric #-}
@@ -55,7 +56,8 @@ type Api = LeadsApi :<|> UsersApi :<|> PipelinesApi
 
 type LeadsApi =
      "leads" :> (
-          Get '[JSON] [Lead]
+          QueryParam "user" Int
+       :> Get '[JSON] [Lead]
      ) 
 
 type UsersApi =      
@@ -90,13 +92,21 @@ type ServerLog = String
 type ServerMonad = RWST ServerReader ServerLog ServerState (ExceptT ServerError IO)
 
 serverT :: ServerT Api ServerMonad
-serverT = getAny "leads" :<|> getAny "users" :<|> getStatuses pipeline_id
+serverT = getLeads :<|> getUsers :<|> getStatuses pipeline_id
 
 server :: ProgOptions -> Server Api
 server opts = hoistServer api (readerToHandler opts) serverT
 
 api :: Proxy Api
 api = Proxy
+
+getLeads :: Maybe Int -> ServerMonad [Lead]
+getLeads (Just user) = getAny "leads" [("filter[responsible_user_id]", Just $ BS.pack $ show user)]
+getLeads _           = getAny "leads" []
+
+getUsers :: ServerMonad [User]
+getUsers = getAny "users" []
+
 
 -- !!! Дублирование получения токена с getAmy 
 -- getAny :: (AmocrmModule a) => String -> ServerMonad [a]
@@ -153,8 +163,8 @@ getStatuses pipeline_id = do
                liftIO $ Prelude.putStrLn $ show err
                throwError err404
 
-getAny :: (AmocrmModule a) => String -> ServerMonad [a]
-getAny mod = do
+getAny :: (AmocrmModule a) => String -> [(ByteString, Maybe ByteString)] -> ServerMonad [a]
+getAny mod queryParams = do
      opts <- asks srOptions
      tokensStamp' <- ssTokensStamps <$> get
      tokenFile <- asks srTokenFile
@@ -198,10 +208,7 @@ getAny mod = do
             liftIO $ System.IO.putStrLn $ "НЕ надо менять"  
             pure $ BS.pack $ access_token tsTokens     
             
-
-
-
-     leads' <- liftIO $ getList mod (optUser opts) tsTokens'
+     leads' <- liftIO $ getList mod queryParams (optUser opts) tsTokens'
      case leads' of
           Right leads -> pure $ leads ^. els
           Left err -> do
