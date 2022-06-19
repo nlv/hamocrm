@@ -21,6 +21,11 @@ module Data.Amocrm (
 , sid
 , sname
 
+, Pipeline
+, pid
+, pname
+, pstatuses
+
 , AmocrmModule(..)
 
 , append'
@@ -42,6 +47,8 @@ import qualified Data.Vector as V (map, Vector(..), toList, empty, length)
 import Control.Lens
 
 import Control.Monad
+
+import Data.Vector (toList)
 
 data ListFromAmocrm a = ListFromAmocrm {
   _els :: [a]
@@ -74,6 +81,9 @@ data Lead = Lead {
 instance ToJSON Lead
 
 makeLenses ''Lead
+
+
+
 
 instance AmocrmModule Lead where
   parser = 
@@ -189,8 +199,24 @@ instance ToJSON Status
 instance AmocrmModule Status where
   parser = \obj -> Status <$> obj .: "name" <*> obj .: "id"  
 
-  
+data Pipeline = Pipeline {
+    _pname     :: Text
+  , _pid       :: Integer
+  , _pstatuses :: [Status]
+}  deriving (Generic, Show)
 
+makeLenses ''Pipeline
+
+instance ToJSON Pipeline
+
+-- !!!  Здесь повтор parseList. одинакого вложенные элементы парсим
+-- !!! с этим надо разобраться и проще парсинг сделать
+instance AmocrmModule Pipeline where
+  parser = \obj -> do
+    embedded <- obj .: "_embedded"
+    els <- embedded .: "statuses"
+    statuses <- toList <$> withArray "statuses in pipeline" (mapM (withObject "status in pipeline" parser)) els
+    Pipeline <$> obj .: "name" <*> obj .: "id" <*> pure statuses
 
 
 

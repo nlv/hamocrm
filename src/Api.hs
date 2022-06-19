@@ -57,6 +57,7 @@ type Api = LeadsApi :<|> UsersApi :<|> PipelinesApi
 type LeadsApi =
      "leads" :> (
           QueryParam "user" Int
+       :> QueryParam "status" Int   
        :> Get '[JSON] [Lead]
      ) 
 
@@ -67,7 +68,7 @@ type UsersApi =
 
 type PipelinesApi =
      "pipelines" :> (
-          "statuses" :> Get '[JSON] [Status]
+          Get '[JSON] [Pipeline]
      )      
 
 data TokensStamp = TokensStamp {
@@ -92,7 +93,7 @@ type ServerLog = String
 type ServerMonad = RWST ServerReader ServerLog ServerState (ExceptT ServerError IO)
 
 serverT :: ServerT Api ServerMonad
-serverT = getLeads :<|> getUsers :<|> getStatuses pipeline_id
+serverT = getLeads :<|> getUsers :<|> getPipelines
 
 server :: ProgOptions -> Server Api
 server opts = hoistServer api (readerToHandler opts) serverT
@@ -100,71 +101,79 @@ server opts = hoistServer api (readerToHandler opts) serverT
 api :: Proxy Api
 api = Proxy
 
-getLeads :: Maybe Int -> ServerMonad [Lead]
-getLeads (Just user) = getAny "leads" [("filter[responsible_user_id]", Just $ BS.pack $ show user)]
-getLeads _           = getAny "leads" []
+getLeads :: Maybe Int -> Maybe Int -> ServerMonad [Lead]
+getLeads user status = getAny "leads" "leads" $ p2p "filter[responsible_user_id]" user (BS.pack . show) ++ p2p "filter[statuses][0][status_id]" status (BS.pack . show)
+     where 
+          p2p :: ByteString -> Maybe Int -> (Int -> ByteString) -> [(ByteString, Maybe ByteString)]
+          p2p key (Just param) conv = [(key, Just $ conv param)]
+          p2p key _ _            = []
+          -- statuses' s = BS.pack (show  s)
+          statuses' s = "[status_id][" `BS.append` BS.pack (show  s) `BS.append` "]"
 
 getUsers :: ServerMonad [User]
-getUsers = getAny "users" []
+getUsers = getAny "users" "users" []
+
+getPipelines :: ServerMonad [Pipeline]
+getPipelines = getAny "pipelines" "leads/pipelines" []
 
 
--- !!! Дублирование получения токена с getAmy 
--- getAny :: (AmocrmModule a) => String -> ServerMonad [a]
-getStatuses :: Int -> ServerMonad [Status]
-getStatuses pipeline_id = do
-     opts <- asks srOptions
-     tokensStamp' <- ssTokensStamps <$> get
-     tokenFile <- asks srTokenFile
-     TokensStamp{..} <- 
-          case tokensStamp' of
-               Just o -> pure o
-               Nothing -> do
-                    h <- liftIO $ openFile tokenFile ReadMode 
-                    tokens' <- liftIO $ eitherDecodeStrict <$> B.hGetLine h :: ServerMonad (Either String TokensStamp)
-                    liftIO $ hClose h
-                    case tokens' of
-                         Left err -> do
-                              liftIO $ Prelude.putStrLn $ show err
-                              throwError err404
-                         Right tokens -> pure tokens
+-- -- !!! Дублирование получения токена с getAmy 
+-- -- getAny :: (AmocrmModule a) => String -> ServerMonad [a]
+-- getPipelines :: ServerMonad [Pipeline]
+-- getPipelines = do
+--      opts <- asks srOptions
+--      tokensStamp' <- ssTokensStamps <$> get
+--      tokenFile <- asks srTokenFile
+--      TokensStamp{..} <- 
+--           case tokensStamp' of
+--                Just o -> pure o
+--                Nothing -> do
+--                     h <- liftIO $ openFile tokenFile ReadMode 
+--                     tokens' <- liftIO $ eitherDecodeStrict <$> B.hGetLine h :: ServerMonad (Either String TokensStamp)
+--                     liftIO $ hClose h
+--                     case tokens' of
+--                          Left err -> do
+--                               liftIO $ Prelude.putStrLn $ show err
+--                               throwError err404
+--                          Right tokens -> pure tokens
 
-     now <- liftIO getPOSIXTime
-     liftIO $ Prelude.putStrLn $ show now
-     liftIO $ Prelude.putStrLn $ show tsEndTokenTime
-     let expired = now > tsEndTokenTime
+--      now <- liftIO getPOSIXTime
+--      liftIO $ Prelude.putStrLn $ show now
+--      liftIO $ Prelude.putStrLn $ show tsEndTokenTime
+--      let expired = now > tsEndTokenTime
 
-     tsTokens' <- if expired 
-          then do
-            liftIO $ System.IO.putStrLn $ "Надо менять"  
-            newToken' <- liftIO $ refreshToken opts tsTokens
-            liftIO $ Prelude.putStrLn $ show newToken'
-            case newToken' of
-              Left err -> do
-                   liftIO $ Prelude.putStrLn $ show err
-                   throwError err404
-              Right newToken -> do
-                let newTokensStamp = TokensStamp { tsTokens = newToken, tsEndTokenTime = (fromInteger . expires_in) tsTokens + now}
-                h <- liftIO $ openFile tokenFile WriteMode 
-                let newTS = BL.toStrict $ encode newTokensStamp
-                liftIO $ BS.putStrLn newTS    
-                liftIO $ BS.hPutStrLn h newTS
-                liftIO $ hClose h
-                put $ ServerState {ssTokensStamps = Just newTokensStamp}
-                pure $ BS.pack $ access_token newToken
-          else do
-            liftIO $ System.IO.putStrLn $ "НЕ надо менять"  
-            pure $ BS.pack $ access_token tsTokens     
+--      tsTokens' <- if expired 
+--           then do
+--             liftIO $ System.IO.putStrLn $ "Надо менять"  
+--             newToken' <- liftIO $ refreshToken opts tsTokens
+--             liftIO $ Prelude.putStrLn $ show newToken'
+--             case newToken' of
+--               Left err -> do
+--                    liftIO $ Prelude.putStrLn $ show err
+--                    throwError err404
+--               Right newToken -> do
+--                 let newTokensStamp = TokensStamp { tsTokens = newToken, tsEndTokenTime = (fromInteger . expires_in) tsTokens + now}
+--                 h <- liftIO $ openFile tokenFile WriteMode 
+--                 let newTS = BL.toStrict $ encode newTokensStamp
+--                 liftIO $ BS.putStrLn newTS    
+--                 liftIO $ BS.hPutStrLn h newTS
+--                 liftIO $ hClose h
+--                 put $ ServerState {ssTokensStamps = Just newTokensStamp}
+--                 pure $ BS.pack $ access_token newToken
+--           else do
+--             liftIO $ System.IO.putStrLn $ "НЕ надо менять"  
+--             pure $ BS.pack $ access_token tsTokens     
 
--- getStatusesList :: Int -> String -> ByteString -> IO (Either String (ListFromAmocrm Status))
-     statuses' <- liftIO $ getStatusesList pipeline_id (optUser opts) tsTokens'
-     case statuses' of
-          Right statuses -> pure $ statuses ^. els
-          Left err -> do
-               liftIO $ Prelude.putStrLn $ show err
-               throwError err404
+-- -- getStatusesList :: Int -> String -> ByteString -> IO (Either String (ListFromAmocrm Status))
+--      statuses' <- liftIO $ getList pipeline_id (optUser opts) tsTokens'
+--      case statuses' of
+--           Right statuses -> pure $ statuses ^. els
+--           Left err -> do
+--                liftIO $ Prelude.putStrLn $ show err
+--                throwError err404
 
-getAny :: (AmocrmModule a) => String -> [(ByteString, Maybe ByteString)] -> ServerMonad [a]
-getAny mod queryParams = do
+getAny :: (AmocrmModule a) => String -> String -> [(ByteString, Maybe ByteString)] -> ServerMonad [a]
+getAny mod path queryParams = do
      opts <- asks srOptions
      tokensStamp' <- ssTokensStamps <$> get
      tokenFile <- asks srTokenFile
@@ -208,7 +217,7 @@ getAny mod queryParams = do
             liftIO $ System.IO.putStrLn $ "НЕ надо менять"  
             pure $ BS.pack $ access_token tsTokens     
             
-     leads' <- liftIO $ getList mod queryParams (optUser opts) tsTokens'
+     leads' <- liftIO $ getList mod path queryParams (optUser opts) tsTokens'
      case leads' of
           Right leads -> pure $ leads ^. els
           Left err -> do

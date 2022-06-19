@@ -62,13 +62,13 @@ instance ToJSON OAuth2
 
 -- !! Сделать stream
 
-getList :: AmocrmModule a => String -> [(ByteString, Maybe ByteString)] -> String -> ByteString -> IO (Either String (ListFromAmocrm a))
-getList ename queryParams user token = go 1 0
+getList :: AmocrmModule a => String -> String -> [(ByteString, Maybe ByteString)] -> String -> ByteString -> IO (Either String (ListFromAmocrm a))
+getList ename path queryParams user token = go 1 0
 
     where 
       go n total = do
         liftIO $ Prelude.putStrLn $ "Порция: " ++ show n
-        r' <- getListPage ename queryParams user token n
+        r' <- getListPage ename path queryParams user token n
         case r' of
           err@(Left _) -> pure err
           Right r'' -> do 
@@ -84,21 +84,26 @@ getList ename queryParams user token = go 1 0
                   Right l3 -> pure (Right $ append' r'' l3)
 
 
-getListPage :: AmocrmModule a => String -> [(ByteString, Maybe ByteString)] -> String -> ByteString -> Int -> IO (Either String (ListFromAmocrm a))
-getListPage ename queryParams user token page = do
+getListPage :: AmocrmModule a => String -> String -> [(ByteString, Maybe ByteString)] -> String -> ByteString -> Int -> IO (Either String (ListFromAmocrm a))
+getListPage ename path queryParams user token page = do
 
     let query = [
                   ("filter[pipeline_id]", Just $ BS.pack $ show pipeline_id)
                 , ("order[created_at]", Just "desc")
                 , ("limit", Just "250")
                 , ("page", Just $ BS.pack $ show page)
+                , ("filter[statuses][0][pipeline_id]", Just $ BS.pack $ show pipeline_id)
                 ] ++ queryParams
 
     liftIO $ Prelude.putStrLn $ "===== QUERY PARAMS"
     liftIO $ Prelude.putStrLn $ show query
     liftIO $ Prelude.putStrLn $ "===== END QUERY PARAMS"
     manager <- newManager tlsManagerSettings
-    request <- (setQueryString query . applyBearerAuth token) <$> parseRequest ("https://" ++ user ++ ".amocrm.ru/api/v4/" ++ ename)
+    request <- (setQueryString query . applyBearerAuth token) <$> parseRequest ("https://" ++ user ++ ".amocrm.ru/api/v4/" ++ path)
+
+    liftIO $ Prelude.putStrLn $ "===== REQUEST"
+    liftIO $ Prelude.putStrLn $ show request
+    liftIO $ Prelude.putStrLn $ "===== END REQUEST"    
 
     withResponse request manager $ \response -> do
       v <- bodyReaderSource (responseBody response) $$ sinkParser json
