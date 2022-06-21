@@ -66,13 +66,17 @@ data Lead = Lead {
   _lid           :: Integer -- Номер 
 , _lname         :: Text -- Название 
 , _href          :: Text -- Ссылка на заявку
-, _lresponsible  :: Integer -- Ответственный
+, _lresponsible  :: Integer -- Ответственный (менеджер)
+, _lmaster       :: Maybe Int -- Мастер
+, _lmasterSalary :: Float -- ЗП мастера
 , _laddress      :: Text -- Адрес
+, _lcity         :: Text -- Город
 , _ldateVisit    :: Maybe UTCTime -- Дата выезда
 , _ltype         :: Text
 , _lsellCost     :: Float -- Цена клиенту
 , _lpartsCost    :: Float -- Стоимость материалов, Затраты на материал, Затрачено
 , _lworksCost    :: Float -- Стоимость работ для клиента
+, _lnetWorksCost :: Float -- Сумма работ
 , _lofficeIncome :: Float -- Перевод в офис, Заработал Офис
 , _lclosedDate   :: Maybe UTCTime -- Дата закрытия
 , _lstatusId     :: Integer
@@ -88,21 +92,20 @@ makeLenses ''Lead
 instance AmocrmModule Lead where
   parser = 
     \obj -> do
-      -- let customObject :: ACD.Decoder (Text, Value)
-      --     customObject = (,) <$> ACD.key "field_name" ACD.text <*> ACD.key "values" ACD.auto
-      --     customArray :: ACD.Decoder [(Text, Value)]
-      --     customArray = ACD.list customObject
-      --     custom = ACD.parseEither customArray (Object obj)
       links <- obj .: "_links"
       self <- links .: "self"
       customFields <- obj .:? "custom_fields_values" .!= Array V.empty
       customFields' <- customDecoder customFields
+      lmaster <- getCustomEnum "master" "Мастер" customFields'
+      lmasterSalary <- getCustomFloat "masterSalary" "Итого вознаграждение мастера" customFields'
       laddress <- getCustomText "address" "Адрес объекта" customFields'
+      lcity <- getCustomText "city" "Город" customFields'
       ldateVisit <- getCustomUTCTime "dateVisit" "Дата выезда" customFields'
       ltype <- getCustomText "type" "Тип заказа" customFields'
       lsellCost <- getCustomFloat "sellCost" "Цена для клиента" customFields'
       lpartsCost <- getCustomFloat "partsCost" "Затрачено" customFields'
       lworksCost <- getCustomFloat "worksCost" "Цена для клиента" customFields'
+      lnetWorksCost <- getCustomFloat "netWorksCost" "Сумма работ" customFields'
       lofficeIncome <- getCustomFloat "officeIncome" "Заработал Офис" customFields'
       lclosedDate <- getCustomUTCTime "closedDate" "Дата закрытия" customFields'
 
@@ -111,19 +114,23 @@ instance AmocrmModule Lead where
         <*> obj .: "name"
         <*> self .: "href"
         <*> obj .: "responsible_user_id"
+        <*> pure lmaster
+        <*> pure lmasterSalary
         <*> pure laddress
+        <*> pure lcity
         <*> pure ldateVisit
         <*> pure ltype
         <*> pure lsellCost
         <*> pure lpartsCost
         <*> pure lworksCost
+        <*> pure lnetWorksCost
         <*> pure lofficeIncome
         <*> pure lclosedDate
         <*> obj .: "status_id"
 
     where 
       getCustomText :: String -> Text -> [(Text, Value)] -> Parser Text
-      getCustomText lname cname fields = withText lname pure $ maybe "" id $ lookup cname fields
+      getCustomText lname cname fields = maybe (pure "") (withObject lname (\obj -> obj .: "value" >>= withText lname (pure . id))) $ lookup cname fields
 
       -- TODO read ...
       getCustomFloat :: String -> Text -> [(Text, Value)] -> Parser Float
@@ -132,9 +139,16 @@ instance AmocrmModule Lead where
         pure $ if Data.Text.length text == 0 then 0 else (read $ unpack text)
 
       getCustomInt :: String -> Text -> [(Text, Value)] -> Parser (Maybe Int)
-      getCustomInt lname cname fields = do
-        r <- withScientific lname (pure . toBoundedInteger) $ maybe (Number 0) id $ lookup cname fields
-        pure r
+      getCustomInt lname cname fields = maybe (pure Nothing) (withObject lname (\obj -> obj .: "value" >>= withScientific lname (pure . toBoundedInteger))) (lookup cname fields)
+
+      getCustomEnum :: String -> Text -> [(Text, Value)] -> Parser (Maybe Int)
+      getCustomEnum lname cname fields = do
+        r <- maybe (pure Nothing) parseValue (lookup cname fields)
+        pure r     
+
+        where parseValue = withObject ("enum of " ++ lname) $ \obj -> do
+                v <- obj .: "enum_id"
+                withScientific ("enum_id of enum of " ++ lname) (pure . toBoundedInteger) v
 
       getCustomUTCTime :: String -> Text -> [(Text, Value)] -> Parser (Maybe UTCTime)
       getCustomUTCTime lname cname fields = do
@@ -155,11 +169,12 @@ instance AmocrmModule Lead where
         v <- p' values
         (,) <$> obj .: "field_name" <*> pure v
 
+-- !!! Возвращаем первый элемент, а надо все
       p' = withArray "custom value" $ \arr -> do
         let values = V.toList arr
         let val = if Prelude.length values == 0 then "" else Prelude.head values
-        r <- withObject "v''" (\obj -> obj .: "value") val
-        pure r 
+        r <- withObject "v''" (pure . id) val
+        pure val
         
 
 data User = User {
