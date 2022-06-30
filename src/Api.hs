@@ -52,12 +52,13 @@ instance TokenRequest ProgOptions where
   tokRedirectURI  = optRedirectUri
 
 
-type Api = LeadsApi :<|> UsersApi :<|> PipelinesApi
+type Api = LeadsApi :<|> UsersApi :<|> PipelinesApi :<|> EnumsApi
 
 type LeadsApi =
      "leads" :> (
           QueryParam "user" Int
        :> QueryParam "status" Int   
+       :> QueryParam "master" Int
        :> Get '[JSON] [Lead]
      ) 
 
@@ -69,7 +70,13 @@ type UsersApi =
 type PipelinesApi =
      "pipelines" :> (
           Get '[JSON] [Pipeline]
-     )      
+     ) 
+
+type EnumsApi =
+     "enums" :> (
+          Capture "enum id" Int
+       :> Get '[JSON] [FieldEnum]
+     )           
 
 data TokensStamp = TokensStamp {
   tsTokens       :: OAuth2
@@ -93,7 +100,7 @@ type ServerLog = String
 type ServerMonad = RWST ServerReader ServerLog ServerState (ExceptT ServerError IO)
 
 serverT :: ServerT Api ServerMonad
-serverT = getLeads :<|> getUsers :<|> getPipelines
+serverT = getLeads :<|> getUsers :<|> getPipelines :<|> getEnums
 
 server :: ProgOptions -> Server Api
 server opts = hoistServer api (readerToHandler opts) serverT
@@ -101,8 +108,27 @@ server opts = hoistServer api (readerToHandler opts) serverT
 api :: Proxy Api
 api = Proxy
 
-getLeads :: Maybe Int -> Maybe Int -> ServerMonad [Lead]
-getLeads user status = getAny "leads" "leads" $ p2p "filter[responsible_user_id]" user (BS.pack . show) ++ p2p "filter[statuses][0][status_id]" status (BS.pack . show)
+getLeads :: Maybe Int -> Maybe Int -> Maybe Int -> ServerMonad [Lead]
+getLeads user status master = do
+     res <- getAny 
+          "leads" 
+          "leads" $ 
+          p2p "filter[responsible_user_id]" user (BS.pack . show) 
+            ++ p2p "filter[statuses][0][status_id]" status (BS.pack . show) 
+            -- !! Зашитый код списка мастеров
+          --   ++ p2p "filter[custom_fields_values][1143523][]" master (BS.pack . show) 
+          --   ++ p2p "filter[custom_fields_values][1143523]" master (BS.pack . show) 
+          --   ++ p2p "filter[1143523]" master (BS.pack . show) 
+          --   ++ p2p "filter[1143523][]" master (BS.pack . show) 
+          --   ++ p2p "filter[custom_fields_values][Мастер][]" master (BS.pack . show) 
+          --   ++ p2p "filter[custom_fields_values][Мастер]" master (BS.pack . show) 
+          --   ++ p2p "filter[1143523][values]" master (BS.pack . show) 
+          --   ++ p2p "filter[1143523][values][]" master (BS.pack . show) 
+
+     case master of
+          Just master' -> pure $ Prelude.filter (\l -> l ^. lmaster == master) res
+          _            -> pure res
+            
      where 
           p2p :: ByteString -> Maybe Int -> (Int -> ByteString) -> [(ByteString, Maybe ByteString)]
           p2p key (Just param) conv = [(key, Just $ conv param)]
@@ -116,61 +142,64 @@ getUsers = getAny "users" "users" []
 getPipelines :: ServerMonad [Pipeline]
 getPipelines = getAny "pipelines" "leads/pipelines" []
 
+getEnums :: Int -> ServerMonad [FieldEnum]
+getEnums enumid = do
+     opts <- asks srOptions
+     tokensStamp' <- ssTokensStamps <$> get
+     tokenFile <- asks srTokenFile
+     TokensStamp{..} <- 
+          case tokensStamp' of
+               Just o -> pure o
+               Nothing -> do
+                    h <- liftIO $ openFile tokenFile ReadMode 
+                    tokens' <- liftIO $ eitherDecodeStrict <$> B.hGetLine h :: ServerMonad (Either String TokensStamp)
+                    liftIO $ hClose h
+                    case tokens' of
+                         Left err -> do
+                              liftIO $ Prelude.putStrLn $ show err
+                              throwError err404
+                         Right tokens -> pure tokens
 
--- -- !!! Дублирование получения токена с getAmy 
--- -- getAny :: (AmocrmModule a) => String -> ServerMonad [a]
--- getPipelines :: ServerMonad [Pipeline]
--- getPipelines = do
---      opts <- asks srOptions
---      tokensStamp' <- ssTokensStamps <$> get
---      tokenFile <- asks srTokenFile
---      TokensStamp{..} <- 
---           case tokensStamp' of
---                Just o -> pure o
---                Nothing -> do
---                     h <- liftIO $ openFile tokenFile ReadMode 
---                     tokens' <- liftIO $ eitherDecodeStrict <$> B.hGetLine h :: ServerMonad (Either String TokensStamp)
---                     liftIO $ hClose h
---                     case tokens' of
---                          Left err -> do
---                               liftIO $ Prelude.putStrLn $ show err
---                               throwError err404
---                          Right tokens -> pure tokens
+     now <- liftIO getPOSIXTime
+     liftIO $ Prelude.putStrLn $ show now
+     liftIO $ Prelude.putStrLn $ show tsEndTokenTime
+     let expired = now > tsEndTokenTime
 
---      now <- liftIO getPOSIXTime
---      liftIO $ Prelude.putStrLn $ show now
---      liftIO $ Prelude.putStrLn $ show tsEndTokenTime
---      let expired = now > tsEndTokenTime
+     tsTokens' <- if expired 
+          then do
+            liftIO $ System.IO.putStrLn $ "Надо менять"  
+            newToken' <- liftIO $ refreshToken opts tsTokens
+            liftIO $ Prelude.putStrLn $ show newToken'
+            case newToken' of
+              Left err -> do
+                   liftIO $ Prelude.putStrLn $ show err
+                   throwError err404
+              Right newToken -> do
+                let newTokensStamp = TokensStamp { tsTokens = newToken, tsEndTokenTime = (fromInteger . expires_in) tsTokens + now}
+                h <- liftIO $ openFile tokenFile WriteMode 
+                let newTS = BL.toStrict $ encode newTokensStamp
+                liftIO $ BS.putStrLn newTS    
+                liftIO $ BS.hPutStrLn h newTS
+                liftIO $ hClose h
+                put $ ServerState {ssTokensStamps = Just newTokensStamp}
+                pure $ BS.pack $ access_token newToken
+          else do
+            liftIO $ System.IO.putStrLn $ "НЕ надо менять"  
+            pure $ BS.pack $ access_token tsTokens          
 
---      tsTokens' <- if expired 
---           then do
---             liftIO $ System.IO.putStrLn $ "Надо менять"  
---             newToken' <- liftIO $ refreshToken opts tsTokens
---             liftIO $ Prelude.putStrLn $ show newToken'
---             case newToken' of
---               Left err -> do
---                    liftIO $ Prelude.putStrLn $ show err
---                    throwError err404
---               Right newToken -> do
---                 let newTokensStamp = TokensStamp { tsTokens = newToken, tsEndTokenTime = (fromInteger . expires_in) tsTokens + now}
---                 h <- liftIO $ openFile tokenFile WriteMode 
---                 let newTS = BL.toStrict $ encode newTokensStamp
---                 liftIO $ BS.putStrLn newTS    
---                 liftIO $ BS.hPutStrLn h newTS
---                 liftIO $ hClose h
---                 put $ ServerState {ssTokensStamps = Just newTokensStamp}
---                 pure $ BS.pack $ access_token newToken
---           else do
---             liftIO $ System.IO.putStrLn $ "НЕ надо менять"  
---             pure $ BS.pack $ access_token tsTokens     
+     enums' <-  liftIO $ getEnumsList enumid (optUser opts) tsTokens'
+     case enums' of
+          Right enums -> pure enums
+          Left err -> do
+               liftIO $ Prelude.putStrLn $ show err
+               throwError err404
 
--- -- getStatusesList :: Int -> String -> ByteString -> IO (Either String (ListFromAmocrm Status))
---      statuses' <- liftIO $ getList pipeline_id (optUser opts) tsTokens'
---      case statuses' of
---           Right statuses -> pure $ statuses ^. els
---           Left err -> do
---                liftIO $ Prelude.putStrLn $ show err
---                throwError err404
+-- !! Проверку токенов вынести отдельно, а не дублировать. Может ее в middleware можно вынести?
+
+
+-- !! делать специфические компинаторы для парсинга одинаковых по структуре частей ответа (parseEmbedded, например),
+-- !! а не через getList все пытаться распарсить
+
 
 getAny :: (AmocrmModule a) => String -> String -> [(ByteString, Maybe ByteString)] -> ServerMonad [a]
 getAny mod path queryParams = do

@@ -4,6 +4,7 @@
 module Network.Amocrm
     ( getList
     , getStatusesList
+    , getEnumsList
     , TokenRequest(..)
     ,OAuth2(..)
     , refreshToken
@@ -59,6 +60,33 @@ class TokenRequest a where
 
 instance FromJSON OAuth2
 instance ToJSON OAuth2
+
+getEnumsList :: Int -> String -> ByteString -> IO (Either String [FieldEnum])
+getEnumsList enumid user token = do
+    manager <- newManager tlsManagerSettings
+    request <- (applyBearerAuth token) <$> parseRequest ("https://" ++ user ++ ".amocrm.ru/api/v4/leads/custom_fields/" ++ show enumid)
+
+    liftIO $ Prelude.putStrLn $ "===== REQUEST"
+    liftIO $ Prelude.putStrLn $ show request
+    liftIO $ Prelude.putStrLn $ "===== END REQUEST"    
+
+    withResponse request manager $ \response -> do
+      v <- bodyReaderSource (responseBody response) $$ sinkParser json
+      -- liftIO $ Prelude.putStrLn $ "====="
+      -- liftIO $ Prelude.putStrLn $ show v
+      -- liftIO $ Prelude.putStrLn $ "====="
+      pure $ parseEither parseResponse v  
+
+-- !! названия того, что парсим, более конкретные и понятные сделать
+    where parseResponse = 
+            withObject "enums response" $ \obj -> do
+              enums <- (obj .: "enums")
+              toList <$> withArray "enums elements" (mapM parseEnum) enums
+
+          parseEnum = 
+            withObject "enum element" $ \obj -> do
+              FieldEnum <$> (obj .: "value") <*> (obj .: "id") <*> (obj .: "sort")
+
 
 -- !! Сделать stream
 

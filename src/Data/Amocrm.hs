@@ -12,6 +12,7 @@ module Data.Amocrm (
 , Lead
 , lid
 , lname
+, lmaster
 
 , User
 , uid
@@ -25,6 +26,11 @@ module Data.Amocrm (
 , pid
 , pname
 , pstatuses
+
+, FieldEnum(..)
+, feid
+, feval
+, fesort
 
 , AmocrmModule(..)
 
@@ -85,9 +91,6 @@ data Lead = Lead {
 instance ToJSON Lead
 
 makeLenses ''Lead
-
-
-
 
 instance AmocrmModule Lead where
   parser = 
@@ -223,6 +226,16 @@ data Pipeline = Pipeline {
 makeLenses ''Pipeline
 
 instance ToJSON Pipeline
+
+data FieldEnum = FieldEnum {
+    _feval  :: Text 
+  , _feid   :: Int
+  , _fesort :: Int
+} deriving (Generic, Show)
+
+makeLenses ''FieldEnum
+
+instance ToJSON FieldEnum
 
 -- !!!  Здесь повтор parseList. одинакого вложенные элементы парсим
 -- !!! с этим надо разобраться и проще парсинг сделать
