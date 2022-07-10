@@ -24,11 +24,14 @@ import Control.Monad.Except
 import System.IO
 import GHC.Generics
 import Data.Time
+-- import Data.Time.Compat 
 import Data.Time.Clock.POSIX
 import Data.Aeson
 import Data.ByteString as B
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.ByteString.Lazy as BL
+
+import Data.Time.Format.ISO8601
 
 import Data.Amocrm
 import Network.Amocrm
@@ -59,6 +62,8 @@ type LeadsApi =
           QueryParam "user" Int
        :> QueryParam "status" Int   
        :> QueryParam "master" Int
+       :> QueryParam "created_at_from" Day
+       :> QueryParam "created_at_to" Day
        :> Get '[JSON] [Lead]
      ) 
 
@@ -108,13 +113,15 @@ server opts = hoistServer api (readerToHandler opts) serverT
 api :: Proxy Api
 api = Proxy
 
-getLeads :: Maybe Int -> Maybe Int -> Maybe Int -> ServerMonad [Lead]
-getLeads user status master = do
+getLeads :: Maybe Int -> Maybe Int -> Maybe Int -> Maybe Day {- Int -} -> Maybe Day -> ServerMonad [Lead]
+getLeads user status master created_at_from created_at_to = do
      res <- getAny 
           "leads" 
           "leads" $ 
-          p2p "filter[responsible_user_id]" user (BS.pack . show) 
-            ++ p2p "filter[statuses][0][status_id]" status (BS.pack . show) 
+          p2p "filter[responsible_user_id]" (fmap show user) (BS.pack) 
+            ++ p2p "filter[statuses][0][status_id]" (fmap show status) (BS.pack) 
+            ++ p2p "filter[created_at][from]" (fmap showGregorian created_at_from) (BS.pack)
+            ++ p2p "filter[created_at][to]" (fmap showGregorian created_at_to) (BS.pack)
             -- !! Зашитый код списка мастеров
           --   ++ p2p "filter[custom_fields_values][1143523][]" master (BS.pack . show) 
           --   ++ p2p "filter[custom_fields_values][1143523]" master (BS.pack . show) 
@@ -130,7 +137,7 @@ getLeads user status master = do
           _            -> pure res
             
      where 
-          p2p :: ByteString -> Maybe Int -> (Int -> ByteString) -> [(ByteString, Maybe ByteString)]
+          p2p :: ByteString -> Maybe String -> (String -> ByteString) -> [(ByteString, Maybe ByteString)]
           p2p key (Just param) conv = [(key, Just $ conv param)]
           p2p key _ _            = []
           -- statuses' s = BS.pack (show  s)

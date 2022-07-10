@@ -84,6 +84,7 @@ data Lead = Lead {
 , _lworksCost    :: Float -- Стоимость работ для клиента
 , _lnetWorksCost :: Float -- Сумма работ
 , _lofficeIncome :: Float -- Перевод в офис, Заработал Офис
+, _lcreatedAt    :: UTCTime -- Дата создания
 , _lclosedDate   :: Maybe UTCTime -- Дата закрытия
 , _lstatusId     :: Integer
 } deriving (Generic, Show)
@@ -111,6 +112,7 @@ instance AmocrmModule Lead where
       lnetWorksCost <- getCustomFloat "netWorksCost" "Сумма работ" customFields'
       lofficeIncome <- getCustomFloat "officeIncome" "Заработал Офис" customFields'
       lclosedDate <- getCustomUTCTime "closedDate" "Дата закрытия" customFields'
+      lcreatedAt <- (obj .: "created_at")
 
       Lead 
         <$> obj .: "id"
@@ -128,6 +130,7 @@ instance AmocrmModule Lead where
         <*> pure lworksCost
         <*> pure lnetWorksCost
         <*> pure lofficeIncome
+        <*> getUTCTime "created_at" lcreatedAt
         <*> pure lclosedDate
         <*> obj .: "status_id"
 
@@ -160,6 +163,15 @@ instance AmocrmModule Lead where
           Just 0 -> pure Nothing
           Just posix' -> pure $ Just $ posixSecondsToUTCTime (fromIntegral posix') 
           _ -> pure Nothing
+
+      getUTCTime :: String -> Value -> Parser UTCTime
+      getUTCTime lname v = withScientific lname s2t v
+
+      s2t :: Scientific -> Parser UTCTime
+      s2t s = do
+        case (toBoundedInteger s :: Maybe Int) of
+          Just s' -> pure $ posixSecondsToUTCTime $ fromIntegral s'
+          Nothing -> fail "s2t fail"
 
       customDecoder (Array arr) = do
           let l =  mapM (parse p) (V.toList arr) 
