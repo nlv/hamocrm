@@ -64,6 +64,8 @@ type LeadsApi =
        :> QueryParam "master" Int
        :> QueryParam "created_at_from" Day
        :> QueryParam "created_at_to" Day
+       :> QueryParam "closed_date_from" Day
+       :> QueryParam "closed_date_to" Day       
        :> Get '[JSON] [Lead]
      ) 
 
@@ -113,8 +115,8 @@ server opts = hoistServer api (readerToHandler opts) serverT
 api :: Proxy Api
 api = Proxy
 
-getLeads :: Maybe Int -> Maybe Int -> Maybe Int -> Maybe Day {- Int -} -> Maybe Day -> ServerMonad [Lead]
-getLeads user status master created_at_from created_at_to = do
+getLeads :: Maybe Int -> Maybe Int -> Maybe Int -> Maybe Day -> Maybe Day -> Maybe Day -> Maybe Day -> ServerMonad [Lead]
+getLeads user status master created_at_from created_at_to closed_date_from closed_date_to = do
      res <- getAny 
           "leads" 
           "leads" $ 
@@ -132,9 +134,19 @@ getLeads user status master created_at_from created_at_to = do
           --   ++ p2p "filter[1143523][values]" master (BS.pack . show) 
           --   ++ p2p "filter[1143523][values][]" master (BS.pack . show) 
 
-     case master of
-          Just master' -> pure $ Prelude.filter (\l -> l ^. lmaster == master) res
-          _            -> pure res
+     let res' = case master of
+          Just master' -> Prelude.filter (\l -> l ^. lmaster == master) res
+          _            -> res
+
+     let res'' = case closed_date_from of
+          Just closed_date_from' -> Prelude.filter (\l -> maybe False id $ fmap (\d -> utctDay d >= closed_date_from') (l ^. lclosedDate)) res'          
+          _            -> res'
+
+     let res''' = case closed_date_to of
+          Just closed_date_to' -> Prelude.filter (\l -> maybe False id $ fmap (\d -> utctDay d < closed_date_to') (l ^. lclosedDate)) res''
+          _            -> res''
+
+     pure res'''
             
      where 
           p2p :: ByteString -> Maybe String -> (String -> ByteString) -> [(ByteString, Maybe ByteString)]

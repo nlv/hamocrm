@@ -13,6 +13,7 @@ module Data.Amocrm (
 , lid
 , lname
 , lmaster
+, lclosedDate
 
 , User
 , uid
